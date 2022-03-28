@@ -85,9 +85,13 @@ class Humidistat():
         Returns True/False for the resulting state (can also get Humidistat.state). 
         '''
 
-        # If mode is not auto, there isn't anything to evaluate (print message and return)
+        # If mode is not auto, there isn't anything to evaluate except the state (set state, and return state)
         if self.mode != MODE_AUTO:
             print('mode is set to {0}, change to auto to evaluate humidity level'.format(self.mode))
+            if self.mode == MODE_ON:
+                self.SetState(1)
+            if self.mode == MODE_OFF:
+                self.SetState(0)
             return self.state
 
         timeCurrent = time.time()

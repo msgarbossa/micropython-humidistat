@@ -254,6 +254,11 @@ def web_page():
       gpio_state="OFF"
     print('gpio_state={0}'.format(gpio_state))
     state_msg = hs.GetLastActivityMsg()
+    mode = "Auto" # hs.mode == 2 is auto
+    if hs.mode == 0:
+        mode = "Off"
+    if hs.mode == 1:
+        mode = "On"
 
     html = """<html>
 
@@ -292,8 +297,10 @@ def web_page():
     <p>Current Temperature: <strong>""" + temperature_string + """</strong></p>
     <p>Current Humity: <strong>""" + humidity_string + """</strong></p>
     <p>Desired Humity: <strong>""" + str(humidity_desired) + """</strong></p>
+    <p>Mode: """ + mode + """</p>
     <p>GPIO state: <strong>""" + gpio_state + """</strong></p>
     <p><strong>""" + state_msg + """</strong></p>
+    <p><strong><a href=\".\">refresh</a></strong></p>
     <p>
         <a href=\"?gpioSwitch=on\"><button class="button">GPIO ON</button></a>
     </p>
@@ -328,10 +335,12 @@ def webServerThread():
             gpioSwitch_off = request.find('/?gpioSwitch=off')
             if gpioSwitch_on == 6:
                 print('GPIO ON')
-                hs.SetState(1)     # unknown error
+                hs.mode = humidistat.MODE_ON
+                hs.Evaluate
             if gpioSwitch_off == 6:
                 print('GPIO OFF')
-                hs.SetState(0)
+                hs.mode = humidistat.MODE_OFF
+                hs.Evaluate
             m = re_set_humidity.search(request)
             if m:
                 result = m.group(1)
