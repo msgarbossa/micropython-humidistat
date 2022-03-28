@@ -1,6 +1,6 @@
 # micropython-humidistat
 
-This project contains a humidistat class (humidistat.py) to control a GPIO connected to a relay to switch a small humidifier on and off.  The humidistat class can set the desired humidity and the GPIO pin to switch on and off.  There are also settings to control the cycle time such as the minimum running time, maximum running time, and minimum time to remain off.  The main script (main.py) has a web page interface to show basic run-state and allows the desired humity to be set.  The capacitive touch sensor is used to briefly display the IP address and relay state on the OLED.  NTP is used to initialize the Real Time Clock (RTC), which affects the timing logic in the humidistat class.  This can be enhanced to allow more granular scheduling such as switching modes between on/off/auto.  The anytemp class is used to abstract reading from various I2C temperature/humidity sensors (BME280 or AHT10).  MQTT state messages are transmitted every 5 minutes or when events occur.
+This project contains a humidistat class (humidistat.py) to control a GPIO connected to a relay, which switches a small humidifier on and off.  There are settings to control the cycle time such as the minimum running time, maximum running time, and minimum time to remain off.  The main script (main.py) has a web page interface to show basic run-state and allows the desired humidity to be set.  The capacitive touch sensor is used to briefly display the IP address and relay state on the OLED.  NTP is used to initialize the Real Time Clock (RTC), which affects the timing logic in the humidistat class.  This can be enhanced to allow more granular scheduling such as switching modes between on/off/auto.  The anytemp class is used to abstract reading from various I2C temperature/humidity sensors (BME280 or AHT10).  MQTT state messages are transmitted every 5 minutes or when events occur.
 
 ## Parts
 
@@ -32,3 +32,7 @@ See [3d-printed-case](./3d-printed-case) for STL and FreeCAD files.  The FreeCAD
 
 ![base](./img/humidistat_base.png)
 
+## Todo
+
+- Include desired humidity in MQTT message
+- Basic scheduling such as the time to turn on (auto) and time to turn off
