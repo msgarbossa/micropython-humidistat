@@ -34,5 +34,4 @@ See [3d-printed-case](./3d-printed-case) for STL and FreeCAD files.  The FreeCAD
 
 ## Todo
 
-- Include desired humidity in MQTT message
 - Basic scheduling such as the time to turn on (auto) and time to turn off

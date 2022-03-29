@@ -192,7 +192,7 @@ def display_metrics(display_sec):
     display.poweroff() # power off the display, pixels persist in memory
 
 def send_metrics():
-    msg = b'{{"s":"{0}","t":"{1}","h":"{2}","r":"{3}"}}'.format(SIGNAL, TEMPERATURE_STRING, HUMIDITY_STRING, hs.state)
+    msg = b'{{"s":"{0}","t":"{1}","h":"{2}","r":"{3}","d":"{4}"}}'.format(SIGNAL, TEMPERATURE_STRING, HUMIDITY_STRING, hs.state, hs.humidity_desired)
 
     # Connect to MQTT
     print("start mqtt")
