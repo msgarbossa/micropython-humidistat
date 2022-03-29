@@ -64,15 +64,13 @@ class Humidistat():
         units = "seconds"
         time_current = time.time()
 
-        if self.last_activity_time < self.init_time and self.last_activity_time < self.init_time:
+        if self.last_activity_time < self.init_time:
             action = "No events for"
             duration = time_current - self.init_time
         else:
             if self.state:
                 action = "Running"
-                duration = time_current - self.last_activity_time
-            else:
-                duration = time_current - self.last_activity_time
+            duration = time_current - self.last_activity_time
 
         if duration > 120:
             duration = duration // 60
