@@ -1,66 +1,66 @@
-
-from machine import Pin, ADC, Timer, RTC, TouchPad, deepsleep, I2C, SoftI2C, UART
-import esp32
-from mqtt import MQTTClient 
-import utime
-import ssd1306
-import webrepl
 import time  # needed for ntptime and/or getting uptime
+import _thread
+import re
+import utime
+import esp32
+from machine import Pin, RTC, TouchPad, I2C, SoftI2C
 import network
 import ntptime
 import ubinascii
-import _thread
+import webrepl
 import humidistat
 import anytemp
-import re
+import ssd1306
+
+
+from mqtt import MQTTClient
 
 try:
-  import usocket as socket
+    import usocket as socket
 except:
-  import socket
+    import socket
 
 # Pins and pin configs
-sdaPin = 21
-sclPin = 22
-sdaPinSoft = 18
-sclPinSoft = 19
+SDA_PIN = 21
+SCL_PIN = 22
+SDA_PIN_SOFT = 18
+SCL_PIN_SOFT = 19
 led = Pin(2,Pin.OUT)  # for onboard LED blink
-doDisplay = False
-doPowerOn = False
-gpioPin = 13
-touchPin = 15
-touchMaxValue = 250  # 625 when not touching, 120 when touching, check less than this value
+DO_DISPLAY = False
+DO_POWER_ON = False
+GPIO_PIN = 13
+TOUCH_PIN = 15
+TOUCH_MAX_VALUE = 250  # 625 when not touching, 120 when touching, check less than this value
 
 # Event timing
-humidityEvaluationIntervalSeconds = 60
-mqttReportingIntervalSeconds = 300
+HUMIDITY_EVALUATION_INTERVAL_SECONDS = 60
+MQTT_REPORTING_INTERVAL_SECONDS = 300
 
 # Wifi object
 wlan = network.WLAN(network.STA_IF)
 
 # MQTT
-client_id = ubinascii.hexlify(machine.unique_id())
-topic_sub = b'home/%s/cmd' % (dev_name)
-topic_pub = b'home/%s/metrics' % (dev_name)
+CLIENT_ID = ubinascii.hexlify(machine.unique_id())
+TOPIC_SUB = b'home/%s/cmd' % (dev_name)
+TOPIC_PUB = b'home/%s/metrics' % (dev_name)
 
 # metric variables
 message_interval = 300  # duration of deep sleep
-signal = 0
-temperature_string = ""
-humidity_val = 0
-humidity_string = ""
-pressure_string = ""
-status = ""
-ip = ""
+SIGNAL = 0
+TEMPERATURE_STRING = ""
+HUMIDITY_VAL = 0
+HUMIDITY_STRING = ""
+PRESSURE_STRING = ""
+IP = ""
 
 # Humidistat
-hs = humidistat.Humidistat(gpioPin)
-humidity_desired = 40
+hs = humidistat.Humidistat(GPIO_PIN)
+HUMIDITY_DESIRED = 40
 
 # I2C
 # 60 (0x3c) = ssd1306, 118 (0x76) = bme280, 56 (0x38) = aht10
-i2c = I2C(1, scl=Pin(sclPin), sda=Pin(sdaPin), freq=400000)
-i2c_s = SoftI2C(sda=Pin(sdaPinSoft), scl=Pin(sclPinSoft))
+i2c = I2C(1, scl=Pin(SCL_PIN), sda=Pin(SDA_PIN), freq=400000)
+i2c_s = SoftI2C(sda=Pin(SDA_PIN_SOFT), scl=Pin(SCL_PIN_SOFT))
 # print(i2c.scan())  # to debug I2C
 # print(i2c_s.scan())  # to debug SoftI2C
 
@@ -69,10 +69,10 @@ display = ssd1306.SSD1306_I2C(128, 64, i2c)
 display.contrast(50)
 
 # Create AnyTemp object (abstraction for different temp sensors)
-tempSensor = anytemp.AnyTemp(i2c_s, temp_sensor_model)
+temp_sensor = anytemp.AnyTemp(i2c_s, temp_sensor_model)
 
 def wifi_connect(wifi_ssid,wifi_passwd):
-    global ip
+    global IP
     wlan.active(True)
     if not wlan.isconnected():
         print('\nConnecting to network', end='')
@@ -88,23 +88,23 @@ def wifi_connect(wifi_ssid,wifi_passwd):
             pass
     print()
     print("Interface's MAC: ", ubinascii.hexlify(network.WLAN().config('mac'),':').decode()) # print the interface's MAC
-    ip = wlan.ifconfig()
-    print("Interface's IP/netmask/gw/DNS: ", ip,"\n") # print the interface's IP/netmask/gw/DNS addresses
+    IP = wlan.ifconfig()
+    print("Interface's IP/netmask/gw/DNS: ", IP,"\n") # print the interface's IP/netmask/gw/DNS addresses
 
 def setup_ntp():
-  print("Local time before synchronization：%s" %str(time.localtime()))
-  ntptime.host = ntp_server
-  ntptime.settime()
-  print("Local time after synchronization：%s" %str(time.localtime()))
-  (year, month, mday, week_of_year, hour, minute, second, milisecond)=RTC().datetime()
-  hour = hour + hour_adjust
-  RTC().init((year, month, mday, week_of_year, hour, minute, second, milisecond)) # GMT correction. GMT-7
-  print("Local time after timezone offset: %s" %str(time.localtime()))
-  print("{}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}".format(RTC().datetime()[0], RTC().datetime()[1], RTC().datetime()[2], RTC().datetime()[4], RTC().datetime()[5],RTC().datetime()[6]))
+    print("Local time before synchronization：%s" %str(time.localtime()))
+    ntptime.host = ntp_server
+    ntptime.settime()
+    print("Local time after synchronization：%s" %str(time.localtime()))
+    (year, month, mday, week_of_year, hour, minute, second, milisecond)=RTC().datetime()
+    hour = hour + hour_adjust
+    RTC().init((year, month, mday, week_of_year, hour, minute, second, milisecond)) # GMT correction. GMT-7
+    print("Local time after timezone offset: %s" %str(time.localtime()))
+    print("{}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}".format(RTC().datetime()[0], RTC().datetime()[1], RTC().datetime()[2], RTC().datetime()[4], RTC().datetime()[5],RTC().datetime()[6]))
 
-def mqttConnect():
-    global client_id, mqtt_server
-    client = MQTTClient(client_id, mqtt_server, port=1883, user=mqtt_user, password=mqtt_password)
+def mqtt_connect():
+    global CLIENT_ID, mqtt_server
+    client = MQTTClient(CLIENT_ID, mqtt_server, port=1883, user=mqtt_user, password=mqtt_password)
     client.connect()
     print('Connected to %s MQTT broker' % (mqtt_server))
     return client
@@ -125,24 +125,24 @@ def draw_display():
     display.rect(0, 0, 128, 64, 1)
     display.hline(0, 50, 128, 1)
 
-    display.text(str(ip[0]), 2, 54, 1)
-    display.text(str(signal), 100, 2, 1)
+    display.text(str(IP[0]), 2, 54, 1)
+    display.text(str(SIGNAL), 100, 2, 1)
 
-    if temperature_string:
-        temperature_display = temperature_string + ' F'
+    if TEMPERATURE_STRING:
+        temperature_display = TEMPERATURE_STRING + ' F'
         display.text(temperature_display, 2, 4, 1)
-    if humidity_string:
-        humidity_display = humidity_string + '%'
+    if HUMIDITY_STRING:
+        humidity_display = HUMIDITY_STRING + '%'
         display.text(humidity_display, 2, 18, 1)
-    # if pressure_string:
-    #     display.text(pressure_string, 2, 32, 1)
-    humidity_desired_display = 'desired:' + str(humidity_desired) + '%'
+    # if PRESSURE_STRING:
+    #     display.text(PRESSURE_STRING, 2, 32, 1)
+    humidity_desired_display = 'desired:' + str(HUMIDITY_DESIRED) + '%'
     display.text(humidity_desired_display, 2, 32, 1)
     if hs.state == 1:
-      switchDisplay = "on"
+        switch_display = "on"
     else:
-      switchDisplay = "off"
-    display.text(switchDisplay, 100, 32, 1)
+        switch_display = "off"
+    display.text(switch_display, 100, 32, 1)
 
     retry = 3
     while retry > 0:
@@ -163,27 +163,26 @@ def wait_for_sensor(sleep_sec):
 
 def get_metrics():
     # variables used in display (TODO: pass w/ kwargs)
-    global temperature_string
-    global humidity_string
-    global humidity_val
-    global pressure_string
-    global status
-    global signal
+    global TEMPERATURE_STRING
+    global HUMIDITY_STRING
+    global HUMIDITY_VAL
+    global PRESSURE_STRING
+    global SIGNAL
 
-    tempSensor.read()
-    temperature_val = tempSensor.temperature
-    humidity_val = tempSensor.humidity
-    pressure_string = tempSensor.pressure
+    temp_sensor.read()
+    temperature_val = temp_sensor.temperature
+    HUMIDITY_VAL = temp_sensor.humidity
+    PRESSURE_STRING = temp_sensor.pressure
 
-    temperature_string = "{:0.1f}".format(round(temperature_val, 1))
-    humidity_string = "{:0.1f}".format(round(humidity_val, 1))
+    TEMPERATURE_STRING = "{:0.1f}".format(round(temperature_val, 1))
+    HUMIDITY_STRING = "{:0.1f}".format(round(HUMIDITY_VAL, 1))
 
-    print(temperature_string)
-    print(humidity_string)
-    print(pressure_string)
+    print(TEMPERATURE_STRING)
+    print(HUMIDITY_STRING)
+    print(PRESSURE_STRING)
 
-    signal = wlan.status('rssi')
-    print(signal)
+    SIGNAL = wlan.status('rssi')
+    print(SIGNAL)
 
 def display_metrics(display_sec):
     display.poweron()
@@ -193,12 +192,12 @@ def display_metrics(display_sec):
     display.poweroff() # power off the display, pixels persist in memory
 
 def send_metrics():
-    msg = b'{{"s":"{0}","t":"{1}","h":"{2}","r":"{3}"}}'.format(signal, temperature_string, humidity_string, hs.state)
+    msg = b'{{"s":"{0}","t":"{1}","h":"{2}","r":"{3}"}}'.format(SIGNAL, TEMPERATURE_STRING, HUMIDITY_STRING, hs.state)
 
     # Connect to MQTT
     print("start mqtt")
     try:
-        client = mqttConnect()
+        client = mqtt_connect()
     except OSError as e:
         print('MQTT: failed to connect')
         return
@@ -206,7 +205,7 @@ def send_metrics():
     print("MQTT: connected")
 
     try:
-        client.publish(topic_pub, msg)
+        client.publish(TOPIC_PUB, msg)
     except:
         print('MQTT: publish failed')
         return
@@ -214,33 +213,33 @@ def send_metrics():
 
     print('MQTT: published metrics')
 
-def humidistatThread():
+def humidistat_thread():
 
     # Setup humidistat
-    hs.SetHumidityPercent(humidity_desired)
-    hs.Enable()
+    hs.set_humidity_percent(HUMIDITY_DESIRED)
+    hs.enable()
 
-    # Initialize lastMqttTime so MQTT message is sent the first time
-    lastMqttTime = time.time() - mqttReportingIntervalSeconds
+    # Initialize last_mqtt_time so MQTT message is sent the first time
+    last_mqtt_time = time.time() - MQTT_REPORTING_INTERVAL_SECONDS
 
     while True:
         get_metrics()
-        hs.Evaluate(humidity_val)
-        timeCurrent = time.time()
-        if timeCurrent - lastMqttTime >= mqttReportingIntervalSeconds:
+        hs.evaluate(HUMIDITY_VAL)
+        time_current = time.time()
+        if time_current - last_mqtt_time >= MQTT_REPORTING_INTERVAL_SECONDS:
             send_metrics()
-            lastMqttTime = timeCurrent
-        utime.sleep(humidityEvaluationIntervalSeconds)
+            last_mqtt_time = time_current
+        utime.sleep(HUMIDITY_EVALUATION_INTERVAL_SECONDS)
 
-def monitorTouchpadThread():
+def monitor_touchpad_thread():
     # Setup touchpad sensor
     # https://mpython.readthedocs.io/en/master/library/micropython/machine/machine.TouchPad.html
-    touch0 = TouchPad(Pin(touchPin))
-    touch0.config(touchMaxValue)
+    touch0 = TouchPad(Pin(TOUCH_PIN))
+    touch0.config(TOUCH_MAX_VALUE)
 
     while True:
-        touchVal = touch0.read()
-        if touchVal < touchMaxValue:
+        touch_val = touch0.read()
+        if touch_val < TOUCH_MAX_VALUE:
             print("touch activated")
             display_metrics(10)
         utime.sleep(1)
@@ -249,11 +248,11 @@ def web_page():
 
     # if gpioSwitch.value() == 1:
     if hs.state == 1:
-      gpio_state="ON"
+        gpio_state="ON"
     else:
-      gpio_state="OFF"
+        gpio_state="OFF"
     print('gpio_state={0}'.format(gpio_state))
-    state_msg = hs.GetLastActivityMsg()
+    state_msg = hs.get_last_activity_msg()
     mode = "Auto" # hs.mode == 2 is auto
     if hs.mode == 0:
         mode = "Off"
@@ -294,9 +293,9 @@ def web_page():
 
 <body>
     <h2>ESP MicroPython Web Server</h2>
-    <p>Current Temperature: <strong>""" + temperature_string + """</strong></p>
-    <p>Current Humity: <strong>""" + humidity_string + """</strong></p>
-    <p>Desired Humity: <strong>""" + str(humidity_desired) + """</strong></p>
+    <p>Current Temperature: <strong>""" + TEMPERATURE_STRING + """</strong></p>
+    <p>Current Humity: <strong>""" + HUMIDITY_STRING + """</strong></p>
+    <p>Desired Humity: <strong>""" + str(HUMIDITY_DESIRED) + """</strong></p>
     <p>Mode: """ + mode + """</p>
     <p>GPIO state: <strong>""" + gpio_state + """</strong></p>
     <p><strong>""" + state_msg + """</strong></p>
@@ -316,13 +315,13 @@ def web_page():
 </html>"""
     return html
 
-def webServerThread():
+def web_server_thread():
     # Setup webserver
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(('', 80))
     s.listen(5)
     re_set_humidity = re.compile("set_humidity=(\d+)")
-    global humidity_desired
+    global HUMIDITY_DESIRED
 
     while True:
         try:
@@ -331,24 +330,25 @@ def webServerThread():
             request = conn.recv(1024)
             request = str(request)
             print('Content = %s' % request)
-            gpioSwitch_on = request.find('/?gpioSwitch=on')  # returns -1 when not found
-            gpioSwitch_off = request.find('/?gpioSwitch=off')
-            if gpioSwitch_on == 6:
+            gpio_switch_on = request.find('/?gpioSwitch=on')  # returns -1 when not found
+            gpio_switch_off = request.find('/?gpioSwitch=off')
+            if gpio_switch_on == 6:
                 print('GPIO ON')
                 hs.mode = humidistat.MODE_ON
-                hs.Evaluate
-            if gpioSwitch_off == 6:
+                hs.evaluate(HUMIDITY_VAL, True) # evaluate humidity with overrides
+            if gpio_switch_off == 6:
                 print('GPIO OFF')
                 hs.mode = humidistat.MODE_OFF
-                hs.Evaluate
+                hs.evaluate(HUMIDITY_VAL, True) # evaluate humidity with overrides
             m = re_set_humidity.search(request)
             if m:
                 result = m.group(1)
                 print("Setting humidity")
                 print(result)
-                humidity_desired = int(result)
-                hs.SetHumidityPercent(humidity_desired)
-                hs.Evaluate(humidity_val, True) # Evaluate humidity with overrides
+                HUMIDITY_DESIRED = int(result)
+                hs.set_humidity_percent(HUMIDITY_DESIRED)
+                hs.set_mode(2) # MODE_AUTO
+                hs.evaluate(HUMIDITY_VAL, True) # evaluate humidity with overrides
             response = web_page()
             conn.send('HTTP/1.1 200 OK\n')
             conn.send('Content-Type: text/html\n')
@@ -364,38 +364,38 @@ def webServerThread():
 # check how the ESP32 was started up (mainly by touch sensor, hard power on, soft reboot)
 boot_reason = machine.reset_cause()
 if boot_reason == machine.DEEPSLEEP_RESET:
-  print('woke from a deep sleep')  # constant = 4
-  wake_reason = machine.wake_reason()
-  print("Device running for: " + str(utime.ticks_ms()) + "ms")
-  print("wake_reason: " + str(wake_reason))
-  if wake_reason == machine.PIN_WAKE:
-      print("Woke up by external pin (external interrupt)")
-  elif wake_reason == 4:  # machine.RTC_WAKE, but constant doesn't exist
-      print("Woke up by RTC (timer ran out)")
-  elif wake_reason == 5:  # machine.ULP_WAKE, but constant doesn't match
-      print("Woke up capacitive touch")
-      doDisplay = True
+    print('woke from a deep sleep')  # constant = 4
+    wake_reason = machine.wake_reason()
+    print("Device running for: " + str(utime.ticks_ms()) + "ms")
+    print("wake_reason: " + str(wake_reason))
+    if wake_reason == machine.PIN_WAKE:
+        print("Woke up by external pin (external interrupt)")
+    elif wake_reason == 4:  # machine.RTC_WAKE, but constant doesn't exist
+        print("Woke up by RTC (timer ran out)")
+    elif wake_reason == 5:  # machine.ULP_WAKE, but constant doesn't match
+        print("Woke up capacitive touch")
+        DO_DISPLAY = True
 elif boot_reason == machine.SOFT_RESET:
-  print('soft reset detected')  # constant = 5
+    print('soft reset detected')  # constant = 5
 elif boot_reason == machine.PWRON_RESET:
-  print('power on detected') # constant = 1
-  # This is used for 2 main reasons:
-  # 1. Safety net in case there are issues with deep sleep that makes it difficult to re-upload
-  # 2. Often the sensors need a few seconds to get accurate readings when power is first applied
-  #    except deep sleep should cut power on the regulated 3.3V pin, but not 5Vin
-  # doPowerOn = True
-  # signal = 'NA'
-  wait_for_sensor(6)
-  # doDisplay = True
+    print('power on detected') # constant = 1
+    # This is used for 2 main reasons:
+    # 1. Safety net in case there are issues with deep sleep that makes it difficult to re-upload
+    # 2. Often the sensors need a few seconds to get accurate readings when power is first applied
+    #    except deep sleep should cut power on the regulated 3.3V pin, but not 5Vin
+    # DO_POWER_ON = True
+    # SIGNAL = 'NA'
+    wait_for_sensor(6)
+    # DO_DISPLAY = True
 elif boot_reason == machine.WDT_RESET:
-  print('WDT_RESET detected') # constant = 3
-  # This also seems to indicate a hard power on
-  # doPowerOn = True
-  # signal = 'NA'
-  wait_for_sensor(6)
-  # doDisplay = True
+    print('WDT_RESET detected') # constant = 3
+    # This also seems to indicate a hard power on
+    # DO_POWER_ON = True
+    # SIGNAL = 'NA'
+    wait_for_sensor(6)
+    # DO_DISPLAY = True
 else:
-  print('boot_reason={0}'.format(boot_reason))
+    print('boot_reason={0}'.format(boot_reason))
 
 # Connect WiFi
 print("connect wifi")
@@ -406,18 +406,18 @@ webrepl.start()
 
 setup_ntp()
 
-print("starting webServerThread")
-_thread.start_new_thread(webServerThread, ())
-print("starting monitorTouchpadThread")
-_thread.start_new_thread(monitorTouchpadThread, ())
+print("starting web_server_thread")
+_thread.start_new_thread(web_server_thread, ())
+print("starting monitor_touchpad_thread")
+_thread.start_new_thread(monitor_touchpad_thread, ())
 
 wait_for_sensor(20)
 
-print("starting humidistatThread")
-_thread.start_new_thread(humidistatThread, ())
+print("starting humidistat_thread")
+_thread.start_new_thread(humidistat_thread, ())
 
 print("done starting threads")
-while(True):
+while True:
     utime.sleep(600)
     print("performing garbage collection")
     gc.collect()   #Perform garbage collection
