@@ -8,8 +8,9 @@ MODE_OFF = const(0)
 MODE_ON = const(1)
 MODE_AUTO = const(2)
 
+
 class Humidistat():
-    def __init__(self, gpioPin, mode = MODE_OFF, minimum_run_minutes = 15, minimum_off_minutes = 15, maximum_run_minutes = 240):
+    def __init__(self, gpioPin, mode=MODE_OFF, minimum_run_minutes=15, minimum_off_minutes=15, maximum_run_minutes=240):
         self.gpio_switch = Pin(gpioPin, Pin.OUT)
         self.mode = mode
         self.humidity_desired = -1
@@ -82,7 +83,7 @@ class Humidistat():
 
         return '{0} for {1} {2}'.format(action, duration, units)
 
-    def evaluate(self, humidity_current, override = False) -> bool:
+    def evaluate(self, humidity_current, override=False) -> bool:
         '''
         Call periodically to evaluate new humidity readings or when settings such as the desired humidity level change.
         Use override = True when settings change to override minimum/maxium on/off restrictions.
@@ -138,4 +139,3 @@ class Humidistat():
                 print('humidity is ok: %s' % (time_current))
                 self.set_state(0)
                 return False
-     
