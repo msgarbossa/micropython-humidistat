@@ -8,8 +8,8 @@ gc.collect()
 esp.osdebug(None)
 
 dev_name = '<device_name>'
-ssid = '<ssid>'
-password = '<wifi_password>'
+wifi_ssid = '<ssid>'
+wifi_password = '<wifi_password>'
 
 mqtt_server = '<mqtt_server>'
 mqtt_user = '<mqtt_user>'
@@ -17,4 +17,6 @@ mqtt_password = '<mqtt_password>'
 ntp_server = 'x.x.x.x'
 hour_adjust = -8  # GMT offset (accepts negative values)
 
+remote_sensor = False  # False to use local sensor for evaluating humidity, True to use remote sensor (remote_dev required)
 temp_sensor_model = "aht10"  # bme280, aht10
+remote_dev = "remote_dev_name"  # used to subscribe to topic for receiving remote sensor readings

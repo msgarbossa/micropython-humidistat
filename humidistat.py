@@ -13,6 +13,7 @@ class Humidistat():
     def __init__(self, gpioPin, mode=MODE_OFF, minimum_run_minutes=15, minimum_off_minutes=15, maximum_run_minutes=240):
         self.gpio_switch = Pin(gpioPin, Pin.OUT)
         self.mode = mode
+        self.humidity_threshold = 1
         self.humidity_desired = -1
         self.enabled = False
         self.__set_minimum_run_minutes(minimum_run_minutes)
@@ -85,7 +86,7 @@ class Humidistat():
         '''
         Call periodically to evaluate new humidity readings or when settings such as the desired humidity level change.
         Use override = True when settings change to override minimum/maxium on/off restrictions.
-        Returns True/False for the resulting state (can also get Humidistat.state).
+        Returns True when state changes.
         '''
 
         # If mode is not auto, there isn't anything to evaluate except the state (set state, and return state)
@@ -100,7 +101,7 @@ class Humidistat():
         time_current = time.time()
         last_activity_seconds = time_current - self.last_activity_time
         if self.mode == MODE_AUTO:
-            if self.humidity_desired > humidity_current:
+            if self.humidity_desired > humidity_current and (self.humidity_desired - humidity_current >= self.humidity_threshold):
                 print('self.humidity_desired ({0}) > humidity_current ({1})'.format(self.humidity_desired, humidity_current))
                 # humidity is too low
                 # check if already running
@@ -109,10 +110,10 @@ class Humidistat():
                     if last_activity_seconds > self.maximum_run_minutes * 60 and not override:
                         print('humidity is too low: but stopping due to maximum running time reached at %s for %s seconds (last_activity_time=%s)' % (time_current, last_activity_seconds, self.last_activity_time))
                         self.set_state(0)
-                        return False
+                        return True
                     else:
                         print('humidity is too low: already running at %s for %s seconds (last_activity_time=%s)' % (time_current, last_activity_seconds, self.last_activity_time))
-                        return True
+                        return False
 
                 # above forces return so can assume not running, but check run time constraints
                 if last_activity_seconds <= self.minimum_off_minutes * 60 and not override:
@@ -127,13 +128,16 @@ class Humidistat():
             else:
                 print('self.humidity_desired ({0}) <= humidity_current ({1})'.format(self.humidity_desired, humidity_current))
                 # humidity is at desired level (current humidity is <= desired humidity)
-                # if running, check if minimum run time has been met
-                if self.state == 1 and last_activity_seconds < self.minimum_run_minutes * 60 and not override:
-                    # keep running until minimum run time is met
-                    print('humidity is ok, but minimum run time has not been met: %s' % (time_current))
-                    return True
-
-                # okay to turn off
-                print('humidity is ok: %s' % (time_current))
-                self.set_state(0)
-                return False
+                if self.state == 1 and (humidity_current - self.humidity_desired >= self.humidity_threshold):
+                    # if running, check if minimum run time has been met
+                    if self.state == 1 and last_activity_seconds < self.minimum_run_minutes * 60 and not override:
+                        # keep running until minimum run time is met
+                        print('humidity is ok, but minimum run time has not been met: %s' % (time_current))
+                        return False
+                    else:
+                        print('humidity is ok (turn off): %s' % (time_current))
+                        self.set_state(0)
+                        return True
+                else:
+                    print('humidity is ok (no action): %s' % (time_current))
+                    return False

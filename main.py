@@ -41,7 +41,7 @@ wlan = network.WLAN(network.STA_IF)
 
 # MQTT
 CLIENT_ID = ubinascii.hexlify(machine.unique_id())
-TOPIC_SUB = b'home/%s/cmd' % (dev_name)
+TOPIC_SUB = b'home/%s/metrics' % (remote_dev)
 TOPIC_PUB = b'home/%s/metrics' % (dev_name)
 
 # metric variables
@@ -50,12 +50,13 @@ SIGNAL = 0
 TEMPERATURE_STRING = ""
 HUMIDITY_VAL = 0
 HUMIDITY_STRING = ""
-PRESSURE_STRING = ""
+# PRESSURE_STRING = ""
 IP = ""
 
 # Humidistat
 hs = humidistat.Humidistat(GPIO_PIN)
 HUMIDITY_DESIRED = 40
+HUMIDITY_REMOTE = 0
 
 # I2C
 # 60 (0x3c) = ssd1306, 118 (0x76) = bme280, 56 (0x38) = aht10
@@ -71,19 +72,22 @@ display.contrast(50)
 # Create AnyTemp object (abstraction for different temp sensors)
 temp_sensor = anytemp.AnyTemp(i2c_s, temp_sensor_model)
 
-def wifi_connect(wifi_ssid,wifi_passwd):
+def wifi_connect(fatal=True):
     global IP
     wlan.active(True)
     if not wlan.isconnected():
         print('\nConnecting to network', end='')
-        wlan.connect(wifi_ssid, wifi_passwd)
+        wlan.connect(wifi_ssid, wifi_password)
         retry = 0
         while not wlan.isconnected():
             if retry >= 20:
                 print('WiFi retry limited reached')
-                restart_and_reconnect()
+                if fatal:
+                    restart_device()
+                else:
+                    return
             print('.', end='')
-            utime.sleep(0.5)
+            utime.sleep(3.0)
             retry += 1
             pass
     print()
@@ -102,15 +106,51 @@ def setup_ntp():
     print("Local time after timezone offset: %s" %str(time.localtime()))
     print("{}/{:02d}/{:02d} {:02d}:{:02d}:{:02d}".format(RTC().datetime()[0], RTC().datetime()[1], RTC().datetime()[2], RTC().datetime()[4], RTC().datetime()[5],RTC().datetime()[6]))
 
-def mqtt_connect():
-    global CLIENT_ID, mqtt_server
-    client = MQTTClient(CLIENT_ID, mqtt_server, port=1883, user=mqtt_user, password=mqtt_password)
-    client.connect()
-    print('Connected to %s MQTT broker' % (mqtt_server))
-    return client
+def send_metrics(client):
+    msg = b'{{"s":"{0}","t":"{1}","h":"{2}","r":"{3}","d":"{4}"}}'.format(SIGNAL, TEMPERATURE_STRING, HUMIDITY_STRING, hs.state, hs.humidity_desired)
+    try:
+        client.publish(TOPIC_PUB, msg)
+    except:
+        print('MQTT: publish failed')
+        return
+    print('MQTT: published metrics')
 
-def restart_and_reconnect():
-    print('Failed to connect to MQTT broker. Reconnecting...')
+def sub_cb(topic, msg):
+    last_receive = time.time()
+    global HUMIDITY_REMOTE
+    print('%s: received message on topic %s with msg: %s' % (last_receive, topic, msg))
+    if topic == TOPIC_SUB:
+        re_humidity_val = re.compile("h\":\"(.+?)\"")
+        m = re_humidity_val.search(str(msg))
+        if m:
+            HUMIDITY_REMOTE = round(float(m.group(1)), 1)
+
+def mqtt_connect_and_subscribe():
+    global CLIENT_ID, mqtt_server, TOPIC_SUB
+    retry = 0
+    while True:
+        try:
+            client = MQTTClient(CLIENT_ID, mqtt_server, port=1883, user=mqtt_user, password=mqtt_password)
+            if remote_sensor:
+                client.set_callback(sub_cb)
+            client.connect()
+            if remote_sensor:
+                client.subscribe(TOPIC_SUB)
+                print('Connected to %s MQTT broker, subscribed to %s topic' % (mqtt_server, TOPIC_SUB))
+            else:
+                print('Connected to %s MQTT broker' % (mqtt_server))
+            return client
+        except:
+            if retry >= 5:
+                print('MQTT retry limited reached')
+                return
+            print('.', end='')
+            utime.sleep(3.0)
+            retry += 1
+            pass
+
+def restart_device():
+    print('Failed to connect to MQTT broker. Restarting...')
     utime.sleep(10)
     machine.reset()
 
@@ -161,25 +201,25 @@ def wait_for_sensor(sleep_sec):
         utime.sleep(1)
         sleep_sec -= 1
 
-def get_metrics():
+def get_metrics_local():
     # variables used in display (TODO: pass w/ kwargs)
     global TEMPERATURE_STRING
     global HUMIDITY_STRING
     global HUMIDITY_VAL
-    global PRESSURE_STRING
+    # global PRESSURE_STRING
     global SIGNAL
 
     temp_sensor.read()
     temperature_val = temp_sensor.temperature
     HUMIDITY_VAL = temp_sensor.humidity
-    PRESSURE_STRING = temp_sensor.pressure
+    # PRESSURE_STRING = temp_sensor.pressure
 
     TEMPERATURE_STRING = "{:0.1f}".format(round(temperature_val, 1))
     HUMIDITY_STRING = "{:0.1f}".format(round(HUMIDITY_VAL, 1))
 
     print(TEMPERATURE_STRING)
     print(HUMIDITY_STRING)
-    print(PRESSURE_STRING)
+    # print(PRESSURE_STRING)
 
     SIGNAL = wlan.status('rssi')
     print(SIGNAL)
@@ -191,44 +231,64 @@ def display_metrics(display_sec):
     display.fill(0)  # clear display by filling with black
     display.poweroff() # power off the display, pixels persist in memory
 
-def send_metrics():
-    msg = b'{{"s":"{0}","t":"{1}","h":"{2}","r":"{3}","d":"{4}"}}'.format(SIGNAL, TEMPERATURE_STRING, HUMIDITY_STRING, hs.state, hs.humidity_desired)
+def humidistat_thread():
 
+    max_retry = 3
     # Connect to MQTT
     print("start mqtt")
     try:
-        client = mqtt_connect()
+        client = mqtt_connect_and_subscribe()
     except OSError as e:
         print('MQTT: failed to connect')
         return
-        # restart_and_reconnect()
     print("MQTT: connected")
-
-    try:
-        client.publish(TOPIC_PUB, msg)
-    except:
-        print('MQTT: publish failed')
-        return
-        # restart_and_reconnect()
-
-    print('MQTT: published metrics')
-
-def humidistat_thread():
 
     # Setup humidistat
     hs.set_humidity_percent(HUMIDITY_DESIRED)
     hs.enable()
 
+
     # Initialize last_mqtt_time so MQTT message is sent the first time
     last_mqtt_time = time.time() - MQTT_REPORTING_INTERVAL_SECONDS
 
     while True:
-        get_metrics()
-        hs.evaluate(HUMIDITY_VAL)
+        get_metrics_local()
+
+        if remote_sensor:
+            # check for remote humidity
+            try:
+                client.check_msg()
+                humidity_eval = HUMIDITY_REMOTE
+            except Exception as e:
+                # If anything fails, reconnect WiFi and MQTT
+                print('err: {0}, reconnect WiFi and MQTT'.format(e))
+                wifi_connect(fatal=False)
+                client = mqtt_connect_and_subscribe()
+                continue
+        else:
+            # use local sensor
+            humidity_eval = HUMIDITY_VAL
+
+        send = False
         time_current = time.time()
-        if time_current - last_mqtt_time >= MQTT_REPORTING_INTERVAL_SECONDS:
-            send_metrics()
-            last_mqtt_time = time_current
+
+        if hs.evaluate(humidity_eval):
+            # evaluate returns True if anything changed so send update
+            send = True
+        elif time_current - last_mqtt_time >= MQTT_REPORTING_INTERVAL_SECONDS:
+            send = True
+
+        if send:
+            try:
+                send_metrics(client)
+                last_mqtt_time = time_current
+            except Exception as e:
+                # If anything fails, reconnect WiFi and MQTT
+                print('err: {0}, reconnect WiFi and MQTT'.format(e))
+                wifi_connect(fatal=False)
+                client = mqtt_connect_and_subscribe()
+                continue      
+
         utime.sleep(HUMIDITY_EVALUATION_INTERVAL_SECONDS)
 
 def monitor_touchpad_thread():
@@ -258,6 +318,10 @@ def web_page():
         mode = "Off"
     if hs.mode == 1:
         mode = "On"
+    if remote_sensor:
+        humidity_curr_string = '{0} ({1})'.format(HUMIDITY_STRING, HUMIDITY_REMOTE)
+    else:
+        humidity_curr_string = HUMIDITY_STRING
 
     html = """<html>
 
@@ -294,7 +358,7 @@ def web_page():
 <body>
     <h2>ESP MicroPython Web Server</h2>
     <p>Current Temperature: <strong>""" + TEMPERATURE_STRING + """</strong></p>
-    <p>Current Humity: <strong>""" + HUMIDITY_STRING + """</strong></p>
+    <p>Current Humity: <strong>""" + humidity_curr_string + """</strong></p>
     <p>Desired Humity: <strong>""" + str(HUMIDITY_DESIRED) + """</strong></p>
     <p>Mode: """ + mode + """</p>
     <p>GPIO state: <strong>""" + gpio_state + """</strong></p>
@@ -399,7 +463,7 @@ else:
 
 # Connect WiFi
 print("connect wifi")
-wifi_connect(ssid, password)
+wifi_connect()
 
 print("start webrepl")
 webrepl.start()
