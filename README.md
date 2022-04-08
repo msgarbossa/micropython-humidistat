@@ -29,6 +29,12 @@ This project contains a humidistat class (humidistat.py) to control a GPIO conne
 - echo "PASS = 'password'" > webrepl_cfg.py
 - [upload all *.py files](https://msgarbossa.github.io/documentation/MicroPython/ampy.html) to ESP32 controller [flashed with MicroPython](https://msgarbossa.github.io/documentation/MicroPython/flash_firmware.html)
 
+## Web UI
+
+![Web UI](./img/web_ui.png)
+
+- If the remote sensor is used, the remote humidity is shown in parenthesis after the local sensor value.
+
 ## 3D printed case
 
 See [3d-printed-case](./3d-printed-case) for STL and FreeCAD files.  The FreeCAD file contains a spreadsheet to adjust most dimensions.
